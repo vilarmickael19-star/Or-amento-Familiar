@@ -1,0 +1,14 @@
+{
+  "name": "Orçamento Familiar",
+  "short_name": "Despesas",
+  "description": "Registo mensal de despesas, receitas e saldo",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#F5F1E6",
+  "theme_color": "#2F6B4C",
+  "orientation": "portrait",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

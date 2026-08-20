@@ -1,0 +1,879 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Orçamento Familiar</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#2F6B4C">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore-compat.js"></script>
+<style>
+  :root{
+    --paper:#F5F1E6;
+    --ink:#242E28;
+    --ink-soft:#5B6459;
+    --rule:#D9D0B8;
+    --margin:#B14A3B;
+    --green:#2F6B4C;
+    --green-dark:#1F4B35;
+    --green-bg:#E7F0EA;
+    --red:#A6432F;
+    --red-bg:#F7E9E5;
+    --amber:#C68B3E;
+    --amber-bg:#FBF0DE;
+    --card:#FDFBF5;
+    --head-bg:#EFE9D8;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
+    background: var(--paper);
+    color: var(--ink);
+    min-height:100vh;
+    padding: 28px 16px 90px;
+  }
+  .wrap{ max-width: 1100px; margin: 0 auto; }
+
+  header{ text-align:center; margin-bottom: 20px; }
+  header .kicker{
+    font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--ink-soft); margin-bottom: 6px;
+  }
+  header h1{
+    font-family: Georgia, 'Iowan Old Style', 'Times New Roman', serif;
+    font-size: 30px; font-weight:700; margin:0 0 4px;
+  }
+  .year-row{
+    display:flex; align-items:center; justify-content:center; gap:8px;
+    font-size: 14px; color: var(--ink-soft);
+  }
+  .year-row input{
+    width: 64px; text-align:center; font-family: ui-monospace, monospace;
+    font-size: 14px; padding: 4px 6px; border: 1px solid var(--rule);
+    border-radius: 3px; background: var(--card); color: var(--ink);
+  }
+
+  .status-row{
+    display:flex; align-items:center; justify-content:center; gap:6px;
+    font-size: 11.5px; color: var(--ink-soft); margin-top: 8px;
+  }
+  .status-dot{ width:7px; height:7px; border-radius:50%; background: var(--rule); }
+  .status-dot.online{ background: var(--green); }
+  .status-dot.offline{ background: var(--red); }
+  .status-row button{
+    background:none; border:none; color: var(--ink-soft); text-decoration:underline;
+    font-size: 11.5px; cursor:pointer; padding:0; margin-left: 6px;
+  }
+
+  .update-banner{
+    display:none; align-items:center; justify-content:center; gap:10px;
+    background: var(--amber-bg); border: 1px solid var(--amber); color: #6B4A15;
+    padding: 8px 14px; border-radius: 4px; font-size: 12.5px; margin: 0 0 14px;
+  }
+  .update-banner button{
+    background: var(--amber); border:none; color:#fff; padding: 4px 12px;
+    border-radius: 3px; font-size: 12px; font-weight:700; cursor:pointer;
+  }
+
+  .view-controls{
+    display:flex; align-items:center; justify-content:center; gap: 14px;
+    margin: 18px 0 16px; flex-wrap: wrap;
+  }
+  .segmented{
+    display:flex; border: 1px solid var(--rule); border-radius: 20px; overflow:hidden;
+  }
+  .segmented button{
+    background: var(--card); border:none; padding: 7px 16px; font-size: 13px;
+    cursor:pointer; color: var(--ink-soft); font-weight:700;
+  }
+  .segmented button.active{ background: var(--green); color: #fff; }
+  .segmented button:not(.active):hover{ background: var(--green-bg); }
+
+  .month-nav{ display:flex; align-items:center; gap: 10px; }
+  .month-nav button{
+    background: var(--card); border: 1px solid var(--rule); color: var(--ink);
+    width: 30px; height: 30px; border-radius: 50%; cursor:pointer; font-size: 15px;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .month-nav button:hover{ background: var(--green-bg); }
+  .month-nav .month-label{
+    font-family: Georgia, serif; font-size: 15px; font-weight:700;
+    min-width: 90px; text-align:center; text-transform:capitalize;
+  }
+
+  .table-card{
+    background: var(--card);
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 18px;
+  }
+  .table-scroll{ overflow-x:auto; }
+  table{ border-collapse: collapse; width: 100%; }
+  table.annual{ min-width: 980px; }
+  table.monthly{ min-width: 420px; }
+  th, td{
+    padding: 6px 8px;
+    font-size: 12.5px;
+    border-bottom: 1px solid var(--rule);
+    text-align: right;
+    white-space: nowrap;
+  }
+  thead th{
+    background: var(--head-bg);
+    color: var(--ink-soft);
+    font-weight:700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-size: 11px;
+    position: sticky;
+    top: 0;
+    z-index: 2;
+  }
+  th.name-col, td.name-col{
+    text-align:left;
+    position: sticky;
+    left: 0;
+    background: var(--card);
+    z-index: 1;
+    min-width: 210px;
+    max-width: 210px;
+  }
+  thead th.name-col{ z-index: 3; background: var(--head-bg); }
+  td.total-col, th.total-col{ font-weight:700; border-left: 1px solid var(--rule); }
+
+  tr.section-header td{
+    background: var(--head-bg);
+    font-family: Georgia, serif;
+    font-weight:700;
+    font-size: 13px;
+    text-align:left;
+    color: var(--ink);
+    padding-top: 10px;
+    padding-bottom: 8px;
+  }
+  tr.cat-header td{ background: #F0ECDD; font-weight:700; font-size: 12.5px; color: var(--green-dark); }
+  tr.cat-header td.name-col{ background:#F0ECDD; }
+  tr.cat-header .cat-name-input{
+    font-weight:700; color: var(--green-dark); background: transparent;
+    border:none; font-size:12.5px; width: 130px; padding: 2px; font-family: inherit;
+  }
+  tr.cat-header .cat-name-input:focus{ outline:1px solid var(--green); border-radius:2px; }
+  tr.cat-header .row-actions{ display:flex; align-items:center; gap:4px; }
+
+  tr.sub-row td.name-col{ padding-left: 22px; }
+  .sub-name-input{
+    border:none; background:transparent; font-size:12.5px; color:var(--ink);
+    width: 155px; padding: 2px; font-family: inherit;
+  }
+  .sub-name-input:focus{ outline:1px solid var(--green); border-radius:2px; }
+
+  tr.subtotal-row td{
+    font-weight:700; font-style: italic; color: var(--ink-soft);
+    border-top: 1px solid var(--rule); font-size: 12px;
+  }
+  tr.subtotal-row td.name-col{ padding-left: 22px; }
+
+  tr.total-row td{
+    font-weight:700; font-size: 13.5px; color: var(--ink);
+    background: #EFE9D8; border-top: 2px solid var(--margin);
+  }
+  tr.saldo-row td{ font-weight:700; font-size: 14px; border-top: 2px solid var(--ink); }
+  tr.saldo-row td.name-col{ font-family: Georgia, serif; }
+
+  .cell-wrap{ position:relative; }
+  .cell-input{
+    width: 68px; text-align:right; border: 1px solid transparent; background: transparent;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px;
+    color: var(--ink); padding: 3px 4px; border-radius: 3px;
+  }
+  .cell-input:hover{ border-color: var(--rule); }
+  .cell-input:focus{ outline:none; border-color: var(--green); background: var(--paper); }
+  .cell-input::placeholder{ color: var(--ink-soft); opacity: 0.55; }
+
+  .note-dot{
+    position:absolute; top: 1px; right: 1px; width: 7px; height: 7px;
+    border-radius: 50%; background: var(--rule); border:none; cursor:pointer; padding:0;
+  }
+  .note-dot.has-note{ background: var(--amber); }
+  .note-dot:hover{ transform: scale(1.3); }
+
+  .del-btn{
+    background:none; border:none; cursor:pointer; color: var(--ink-soft);
+    font-size: 13px; padding: 2px 4px; line-height:1; flex-shrink:0;
+  }
+  .del-btn:hover{ color: var(--red); }
+
+  tr.add-row td{ padding: 8px; background: var(--card); }
+  .add-btn{
+    background: none; border: 1px dashed var(--rule); color: var(--green-dark);
+    padding: 6px 12px; border-radius: 3px; font-size: 12.5px; font-weight:700; cursor:pointer;
+  }
+  .add-btn:hover{ background: var(--green-bg); border-color: var(--green); }
+
+  .pos{ color: var(--green-dark); background: var(--green-bg); }
+  .neg{ color: var(--red); background: var(--red-bg); }
+
+  .loading{ text-align:center; padding: 60px 0; color: var(--ink-soft); font-size:14px; }
+  .save-hint{ text-align:center; font-size: 11px; color: var(--ink-soft); margin-top: -4px; margin-bottom: 4px; }
+
+  .config-gate{
+    max-width: 480px; margin: 60px auto; background: var(--card);
+    border: 1px solid var(--rule); border-radius: 6px; padding: 28px 26px;
+  }
+  .config-gate h2{ font-family: Georgia, serif; font-size: 19px; margin: 0 0 8px; }
+  .config-gate p{ font-size: 13.5px; color: var(--ink-soft); line-height:1.5; margin: 0 0 14px; }
+  .config-gate ol{ font-size: 13px; color: var(--ink-soft); padding-left: 20px; line-height:1.7; margin: 0 0 16px; }
+  .config-gate textarea{
+    width: 100%; min-height: 120px; font-family: ui-monospace, monospace; font-size: 12px;
+    padding: 10px; border: 1px solid var(--rule); border-radius: 4px; background: var(--paper);
+    color: var(--ink); resize: vertical;
+  }
+  .config-gate .config-error{ color: var(--red); font-size: 12.5px; margin-top: 8px; display:none; }
+  .config-gate button.primary{
+    margin-top: 14px; background: var(--green); color:#fff; border:none;
+    padding: 10px 20px; border-radius: 4px; font-size: 14px; font-weight:700; cursor:pointer;
+  }
+  .config-gate button.primary:hover{ background: var(--green-dark); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="kicker">Orçamento familiar</div>
+    <h1>As Nossas Despesas</h1>
+    <div class="year-row">
+      Ano <input type="number" id="yearInput" />
+    </div>
+    <div class="status-row">
+      <span class="status-dot" id="statusDot"></span>
+      <span id="statusText">A ligar…</span>
+      <button id="reconfigBtn">mudar ligação</button>
+    </div>
+  </header>
+
+  <div id="configGate" style="display:none;"></div>
+
+  <div id="mainView" style="display:none;">
+    <div class="update-banner" id="updateBanner">
+      Há alterações novas de outro dispositivo.
+      <button id="applyUpdateBtn">Atualizar</button>
+    </div>
+
+    <div class="view-controls">
+      <div class="segmented" id="viewSegment">
+        <button data-view="monthly">Mês</button>
+        <button data-view="annual">Ano completo</button>
+      </div>
+      <div class="month-nav" id="monthNav" style="display:none;">
+        <button id="prevMonth" aria-label="Mês anterior">‹</button>
+        <div class="month-label" id="monthLabel">—</div>
+        <button id="nextMonth" aria-label="Mês seguinte">›</button>
+      </div>
+    </div>
+
+    <div id="app"><div class="loading">A carregar os teus dados…</div></div>
+  </div>
+</div>
+
+<script>
+const LOCAL_CACHE_KEY = 'budget-cache-v1';
+const FIREBASE_CONFIG_KEY = 'firebase-config-v1';
+const MONTHS = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+const MONTHS_FULL = ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
+
+const DEFAULT_MODEL = {
+  year: 2026,
+  categories: [
+    { id:'c1', name:'Alimentação', subs:[
+      { id:'s1', name:'Mercearia/Hipermercado', vals:[223.24,0,0,0,0,0,0,0,0,0,0,0], notes:{} },
+      { id:'s2', name:'Restaurantes', vals:[36,0,0,0,0,20.6,0,0,0,0,0,0], notes:{} },
+      { id:'s3', name:'Pequeno-Almoço/Lanche', vals:[0,0,0,0,0,0,0,0,0,0,0,0], notes:{} },
+    ]},
+    { id:'c2', name:'Animais', subs:[
+      { id:'s4', name:'Desparasitação', vals:[0,0,0,0,0,0,0,0,0,0,0,0], notes:{} },
+      { id:'s5', name:'Diversos', vals:[0,0,0,0,0,0,0,0,0,0,0,0], notes:{} },
+      { id:'s6', name:'Licença', vals:[0,0,0,0,0,0,0,0,0,0,0,0], notes:{} },
+      { id:'s7', name:'Ração', vals:[0,0,0,0,0,0,0,0,0,0,0,0], notes:{} },
+      { id:'s8', name:'Veterinário', vals:[0,0,0,0,0,0,0,0,0,0,0,0], notes:{} },
+    ]},
+    { id:'c3', name:'Créditos', subs:[
+      { id:'s9', name:'Crédito Habitação', vals:[748.22,748.22,748.22,748.22,748.22,748.22,748.22,748.22,0,0,0,0], notes:{} },
+      { id:'s10', name:'Despesas Bancárias', vals:[5.19,5.19,5.19,5.19,5.19,5.19,5.19,5.19,0,0,0,0], notes:{} },
+    ]},
+    { id:'c4', name:'Habitação', subs:[
+      { id:'s11', name:'EDP - Luz', vals:[93.02,90.53,107.41,90.25,88.51,78.1,78.72,68.42,0,0,0,0], notes:{} },
+      { id:'s12', name:'Água', vals:[17.95,19.87,16.36,26.35,17.84,21.14,19.82,30.43,0,0,0,0], notes:{} },
+      { id:'s13', name:'Telecomunicações', vals:[46.38,42.49,44.1,43.47,43.47,43.47,47.49,53.47,0,0,0,0], notes:{} },
+    ]},
+    { id:'c5', name:'Seguros', subs:[
+      { id:'s14', name:'Seguro Casa', vals:[20.63,20.63,20.63,20.63,20.63,20.63,20.63,20.24,0,0,0,0], notes:{} },
+      { id:'s15', name:'Seguro Vida', vals:[24.48,24.48,24.48,24.48,24.48,24.48,24.39,0,0,0,0,0], notes:{} },
+    ]},
+    { id:'c6', name:'Habitação (Recheio)', subs:[
+      { id:'s16', name:'Artigos Casa', vals:[148.21,0,0,0,0,0,0,0,0,0,0,0], notes:{} },
+      { id:'s17', name:'Eletrodomésticos', vals:[0,0,0,0,0,0,0,0,0,0,0,0], notes:{} },
+      { id:'s18', name:'Mobília', vals:[61.99,0,0,0,0,0,0,0,0,0,0,0], notes:{} },
+    ]},
+  ],
+  income: [
+    { id:'i1', name:'Vencimento Mickael', vals:[580,530,522,500,525,600,600,1800,0,0,0,0], notes:{ 7:'Sub. Férias - 1200€' } },
+    { id:'i2', name:'Vencimento Diana', vals:[580,520,515,500,500,483.21,400,540,0,0,0,0], notes:{ 5:'Sub. Férias - 83,21€', 7:'Sub. Férias - 140€' } },
+  ]
+};
+
+let model = null;
+let viewMode = 'monthly';
+let selectedMonth = new Date().getMonth();
+let db = null;
+let docRef = null;
+let unsubscribeSnapshot = null;
+let saveTimer = null;
+let lastSyncedJson = null;
+let pendingRemoteModel = null;
+
+function uid(prefix){ return prefix + '_' + Date.now() + '_' + Math.random().toString(36).slice(2,7); }
+function fmt(n){
+  n = Number(n) || 0;
+  if(n === 0) return '–';
+  return new Intl.NumberFormat('pt-PT', { minimumFractionDigits:2, maximumFractionDigits:2 }).format(n);
+}
+function sum(arr){ return arr.reduce((a,b)=>a+(Number(b)||0),0); }
+function escHtml(str){ const d=document.createElement('div'); d.textContent=str; return d.innerHTML; }
+function escAttr(str){ return escHtml(str).replace(/"/g,'&quot;'); }
+
+/* ---------- Firebase config gate ---------- */
+
+function loadFirebaseConfig(){
+  try{
+    const raw = localStorage.getItem(FIREBASE_CONFIG_KEY);
+    return raw ? JSON.parse(raw) : null;
+  }catch(e){ return null; }
+}
+function saveFirebaseConfig(cfg){
+  localStorage.setItem(FIREBASE_CONFIG_KEY, JSON.stringify(cfg));
+}
+function clearFirebaseConfig(){
+  localStorage.removeItem(FIREBASE_CONFIG_KEY);
+}
+
+function parseFirebaseConfigText(text){
+  const get = (key)=>{
+    const m = text.match(new RegExp(key + '\\s*:\\s*["\']([^"\']+)["\']'));
+    return m ? m[1] : '';
+  };
+  const cfg = {
+    apiKey: get('apiKey'),
+    authDomain: get('authDomain'),
+    projectId: get('projectId'),
+    storageBucket: get('storageBucket'),
+    messagingSenderId: get('messagingSenderId'),
+    appId: get('appId')
+  };
+  if(!cfg.apiKey || !cfg.projectId) return null;
+  return cfg;
+}
+
+function renderConfigGate(errorMsg){
+  document.getElementById('mainView').style.display = 'none';
+  const gate = document.getElementById('configGate');
+  gate.style.display = 'block';
+  gate.innerHTML = `
+    <div class="config-gate">
+      <h2>Ligar à cloud partilhada</h2>
+      <p>Para tu e o Mickael verem e editarem as mesmas despesas, a app precisa de uma base de dados Firebase (gratuita, da Google). Só é preciso fazer isto uma vez por dispositivo.</p>
+      <ol>
+        <li>Vai a <strong>console.firebase.google.com</strong> e cria um projeto (nome à tua escolha).</li>
+        <li>No projeto, clica em <strong>Firestore Database → Criar base de dados</strong> (modo produção, localização à tua escolha).</li>
+        <li>Em <strong>Regras</strong>, substitui pelo texto abaixo e publica:<br>
+          <span style="font-family: ui-monospace, monospace; font-size:11px; display:block; background:var(--paper); padding:8px; border-radius:3px; margin-top:4px; white-space:pre;">rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /orcamento/{docId} {
+      allow read, write: if true;
+    }
+  }
+}</span>
+        </li>
+        <li>Volta à página inicial do projeto, clica no ícone <strong>&lt;/&gt; (Web)</strong> para registar uma app, dá-lhe um nome e clica em Registar app.</li>
+        <li>Copia todo o bloco <strong>firebaseConfig</strong> que aparece e cola-o aqui em baixo.</li>
+      </ol>
+      <textarea id="configInput" placeholder='const firebaseConfig = {
+  apiKey: "...",
+  authDomain: "...",
+  projectId: "...",
+  ...
+};'></textarea>
+      <div class="config-error" id="configError">${errorMsg ? escHtml(errorMsg) : ''}</div>
+      <button class="primary" id="configSaveBtn">Ligar</button>
+    </div>
+  `;
+  if(errorMsg) document.getElementById('configError').style.display = 'block';
+  document.getElementById('configSaveBtn').addEventListener('click', ()=>{
+    const text = document.getElementById('configInput').value;
+    const cfg = parseFirebaseConfigText(text);
+    if(!cfg){
+      const errEl = document.getElementById('configError');
+      errEl.textContent = 'Não consegui ler essa configuração. Confirma que colaste o bloco firebaseConfig completo.';
+      errEl.style.display = 'block';
+      return;
+    }
+    saveFirebaseConfig(cfg);
+    gate.style.display = 'none';
+    startSync(cfg);
+  });
+}
+
+function setStatus(state, text){
+  const dot = document.getElementById('statusDot');
+  dot.className = 'status-dot' + (state ? ' ' + state : '');
+  document.getElementById('statusText').textContent = text;
+}
+
+document.getElementById('reconfigBtn').addEventListener('click', ()=>{
+  if(!confirm('Isto desliga este dispositivo da cloud atual. Vais precisar de colar a configuração Firebase novamente. Continuar?')) return;
+  if(unsubscribeSnapshot) unsubscribeSnapshot();
+  clearFirebaseConfig();
+  renderConfigGate();
+});
+
+/* ---------- Firestore sync ---------- */
+
+function startSync(cfg){
+  try{
+    if(!firebase.apps.length){
+      firebase.initializeApp(cfg);
+    }
+    db = firebase.firestore();
+    try{ db.enablePersistence({ synchronizeTabs:true }).catch(()=>{}); }catch(e){}
+    docRef = db.collection('orcamento').doc('familia');
+
+    setStatus('', 'A ligar…');
+    document.getElementById('mainView').style.display = 'block';
+
+    const cached = localStorage.getItem(LOCAL_CACHE_KEY);
+    if(cached){
+      try{ model = JSON.parse(cached); document.getElementById('yearInput').value = model.year; render(); }catch(e){}
+    }
+
+    unsubscribeSnapshot = docRef.onSnapshot(snap=>{
+      if(!snap.exists){
+        if(model){
+          docRef.set({ model }).catch(()=>{});
+        }
+        return;
+      }
+      const data = snap.data();
+      if(!data || !data.model) return;
+      const incomingJson = JSON.stringify(data.model);
+      if(incomingJson === lastSyncedJson) return;
+
+      if(model === null){
+        model = data.model;
+        lastSyncedJson = incomingJson;
+        document.getElementById('yearInput').value = model.year;
+        localStorage.setItem(LOCAL_CACHE_KEY, incomingJson);
+        render();
+        return;
+      }
+
+      if(incomingJson === JSON.stringify(model)) { lastSyncedJson = incomingJson; return; }
+
+      const active = document.activeElement;
+      const isEditing = active && active.closest && active.closest('#app');
+      if(isEditing){
+        pendingRemoteModel = data.model;
+        document.getElementById('updateBanner').style.display = 'flex';
+      }else{
+        model = data.model;
+        lastSyncedJson = incomingJson;
+        localStorage.setItem(LOCAL_CACHE_KEY, incomingJson);
+        document.getElementById('yearInput').value = model.year;
+        render();
+      }
+    }, err=>{
+      console.error(err);
+      setStatus('offline', 'Sem ligação — a mostrar dados guardados');
+    });
+
+    window.addEventListener('online', ()=> setStatus('online', 'Sincronizado'));
+    window.addEventListener('offline', ()=> setStatus('offline', 'Sem ligação — a mostrar dados guardados'));
+    setTimeout(()=>{ if(navigator.onLine) setStatus('online', 'Sincronizado'); }, 1200);
+
+  }catch(e){
+    console.error(e);
+    renderConfigGate('Não consegui ligar com esta configuração. Confirma os valores e tenta novamente.');
+  }
+}
+
+function scheduleSave(){
+  localStorage.setItem(LOCAL_CACHE_KEY, JSON.stringify(model));
+  clearTimeout(saveTimer);
+  setStatus('', 'A guardar…');
+  saveTimer = setTimeout(()=>{
+    const json = JSON.stringify(model);
+    if(!docRef) return;
+    docRef.set({ model, updatedAt: firebase.firestore.FieldValue.serverTimestamp() })
+      .then(()=>{ lastSyncedJson = json; setStatus('online', 'Sincronizado'); })
+      .catch(()=>{ setStatus('offline', 'Sem ligação — vai sincronizar quando voltar'); });
+  }, 500);
+}
+
+document.getElementById('applyUpdateBtn').addEventListener('click', ()=>{
+  if(pendingRemoteModel){
+    model = pendingRemoteModel;
+    lastSyncedJson = JSON.stringify(model);
+    localStorage.setItem(LOCAL_CACHE_KEY, lastSyncedJson);
+    pendingRemoteModel = null;
+    document.getElementById('updateBanner').style.display = 'none';
+    document.getElementById('yearInput').value = model.year;
+    render();
+  }
+});
+
+/* ---------- data helpers ---------- */
+
+function visibleMonths(){ return viewMode === 'annual' ? MONTHS.map((_,i)=>i) : [selectedMonth]; }
+
+function computeTotals(){
+  const catSubtotals = model.categories.map(cat=>{
+    const monthly = MONTHS.map((_,mi)=> sum(cat.subs.map(s=>s.vals[mi]||0)) );
+    return { catId: cat.id, monthly, total: sum(monthly) };
+  });
+  const totalDespesasMonthly = MONTHS.map((_,mi)=> sum(catSubtotals.map(c=>c.monthly[mi])) );
+  const incomeMonthly = MONTHS.map((_,mi)=> sum(model.income.map(i=>i.vals[mi]||0)) );
+  const saldoMonthly = MONTHS.map((_,mi)=> incomeMonthly[mi] - totalDespesasMonthly[mi]);
+  return {
+    catSubtotals,
+    totalDespesasMonthly, totalDespesasTotal: sum(totalDespesasMonthly),
+    incomeMonthly, incomeTotal: sum(incomeMonthly),
+    saldoMonthly, saldoTotal: sum(saldoMonthly)
+  };
+}
+
+function noteDot(note, dataAttr){
+  const has = note && note.trim().length > 0;
+  const title = has ? note.replace(/"/g,'&quot;') : 'Adicionar nota';
+  return `<button type="button" class="note-dot ${has?'has-note':''}" title="${title}" ${dataAttr}></button>`;
+}
+
+/* ---------- render ---------- */
+
+function render(){
+  if(!model) return;
+  const app = document.getElementById('app');
+  const t = computeTotals();
+  const cols = visibleMonths();
+  const colspan = cols.length + 2;
+
+  document.querySelectorAll('#viewSegment button').forEach(b=> b.classList.toggle('active', b.getAttribute('data-view')===viewMode));
+  document.getElementById('monthNav').style.display = viewMode==='monthly' ? 'flex' : 'none';
+  document.getElementById('monthLabel').textContent = MONTHS_FULL[selectedMonth];
+
+  let html = `<div class="table-card"><div class="table-scroll"><table class="${viewMode==='annual'?'annual':'monthly'}">
+    <thead><tr>
+      <th class="name-col">Item</th>
+      ${cols.map(mi=>`<th>${MONTHS[mi]}</th>`).join('')}
+      <th class="total-col">Total</th>
+    </tr></thead><tbody>`;
+
+  html += `<tr class="section-header"><td colspan="${colspan}">Despesas</td></tr>`;
+
+  model.categories.forEach((cat, ci)=>{
+    const subtotal = t.catSubtotals[ci];
+    html += `<tr class="cat-header" data-cat="${cat.id}">
+      <td class="name-col">
+        <div class="row-actions">
+          <input class="cat-name-input" value="${escAttr(cat.name)}" data-cat-name="${cat.id}" />
+          <button class="del-btn" data-del-cat="${cat.id}" aria-label="Remover categoria" title="Remover categoria">✕</button>
+        </div>
+      </td>
+      ${cols.map(()=>'<td></td>').join('')}
+      <td class="total-col"></td>
+    </tr>`;
+
+    cat.subs.forEach(sub=>{
+      if(!sub.notes) sub.notes = {};
+      html += `<tr class="sub-row" data-cat="${cat.id}" data-sub="${sub.id}">
+        <td class="name-col">
+          <input class="sub-name-input" value="${escAttr(sub.name)}" data-sub-name="${cat.id}|${sub.id}" />
+          <button class="del-btn" data-del-sub="${cat.id}|${sub.id}" aria-label="Remover item" title="Remover item">✕</button>
+        </td>
+        ${cols.map(mi=>{
+          const v = sub.vals[mi];
+          const note = sub.notes[mi] || '';
+          return `<td class="cell-wrap">
+            <input type="number" step="0.01" class="cell-input" value="${v?v:''}" placeholder="–" data-cell="${cat.id}|${sub.id}|${mi}" />
+            ${noteDot(note, `data-note-cell="${cat.id}|${sub.id}|${mi}"`)}
+          </td>`;
+        }).join('')}
+        <td class="total-col" data-sub-total="${cat.id}|${sub.id}">${fmt(sum(sub.vals))}</td>
+      </tr>`;
+    });
+
+    html += `<tr class="subtotal-row" data-cat-subtotal="${cat.id}">
+      <td class="name-col">Total desp. ${escHtml(cat.name)}</td>
+      ${cols.map(mi=>`<td>${fmt(subtotal.monthly[mi])}</td>`).join('')}
+      <td class="total-col">${fmt(subtotal.total)}</td>
+    </tr>`;
+  });
+
+  html += `<tr class="add-row"><td colspan="${colspan}"><button class="add-btn" id="addCatBtn">+ Nova categoria</button></td></tr>`;
+
+  html += `<tr class="total-row" data-total-despesas>
+    <td class="name-col">Total Despesas</td>
+    ${cols.map(mi=>`<td>${fmt(t.totalDespesasMonthly[mi])}</td>`).join('')}
+    <td class="total-col">${fmt(t.totalDespesasTotal)}</td>
+  </tr>`;
+
+  html += `<tr class="section-header"><td colspan="${colspan}">Receitas</td></tr>`;
+
+  model.income.forEach(inc=>{
+    if(!inc.notes) inc.notes = {};
+    html += `<tr class="sub-row" data-income="${inc.id}">
+      <td class="name-col">
+        <input class="sub-name-input" value="${escAttr(inc.name)}" data-income-name="${inc.id}" />
+        <button class="del-btn" data-del-income="${inc.id}" aria-label="Remover receita" title="Remover receita">✕</button>
+      </td>
+      ${cols.map(mi=>{
+        const v = inc.vals[mi];
+        const note = inc.notes[mi] || '';
+        return `<td class="cell-wrap">
+          <input type="number" step="0.01" class="cell-input" value="${v?v:''}" placeholder="–" data-income-cell="${inc.id}|${mi}" />
+          ${noteDot(note, `data-note-income="${inc.id}|${mi}"`)}
+        </td>`;
+      }).join('')}
+      <td class="total-col" data-income-total="${inc.id}">${fmt(sum(inc.vals))}</td>
+    </tr>`;
+  });
+
+  html += `<tr class="add-row"><td colspan="${colspan}"><button class="add-btn" id="addIncomeBtn">+ Nova receita</button></td></tr>`;
+
+  html += `<tr class="total-row" data-total-receitas>
+    <td class="name-col">Total Receitas</td>
+    ${cols.map(mi=>`<td>${fmt(t.incomeMonthly[mi])}</td>`).join('')}
+    <td class="total-col">${fmt(t.incomeTotal)}</td>
+  </tr>`;
+
+  html += `<tr class="section-header"><td colspan="${colspan}">Saldos</td></tr>`;
+  html += `<tr class="saldo-row" data-saldo-row>
+    <td class="name-col">Saldo Desp./Receitas</td>
+    ${cols.map(mi=>`<td class="${t.saldoMonthly[mi]>=0?'pos':'neg'}">${fmt(t.saldoMonthly[mi])}</td>`).join('')}
+    <td class="total-col ${t.saldoTotal>=0?'pos':'neg'}">${fmt(t.saldoTotal)}</td>
+  </tr>`;
+
+  html += `</tbody></table></div></div>`;
+  app.innerHTML = html;
+  attachHandlers();
+}
+
+function attachHandlers(){
+  document.querySelectorAll('[data-cell]').forEach(inp=>{
+    inp.addEventListener('input', ()=>{
+      const [catId, subId, mi] = inp.getAttribute('data-cell').split('|');
+      const sub = model.categories.find(c=>c.id===catId).subs.find(s=>s.id===subId);
+      sub.vals[Number(mi)] = parseFloat(inp.value) || 0;
+      updateComputed();
+      scheduleSave();
+    });
+    inp.addEventListener('blur', maybeApplyPending);
+  });
+
+  document.querySelectorAll('[data-income-cell]').forEach(inp=>{
+    inp.addEventListener('input', ()=>{
+      const [incId, mi] = inp.getAttribute('data-income-cell').split('|');
+      const inc = model.income.find(i=>i.id===incId);
+      inc.vals[Number(mi)] = parseFloat(inp.value) || 0;
+      updateComputed();
+      scheduleSave();
+    });
+    inp.addEventListener('blur', maybeApplyPending);
+  });
+
+  document.querySelectorAll('[data-note-cell]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const [catId, subId, mi] = btn.getAttribute('data-note-cell').split('|');
+      const sub = model.categories.find(c=>c.id===catId).subs.find(s=>s.id===subId);
+      const current = sub.notes[mi] || '';
+      const text = prompt('Nota para ' + sub.name + ' (' + MONTHS[mi] + '):', current);
+      if(text === null) return;
+      if(text.trim()==='') delete sub.notes[mi]; else sub.notes[mi] = text.trim();
+      render(); scheduleSave();
+    });
+  });
+
+  document.querySelectorAll('[data-note-income]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const [incId, mi] = btn.getAttribute('data-note-income').split('|');
+      const inc = model.income.find(i=>i.id===incId);
+      const current = inc.notes[mi] || '';
+      const text = prompt('Nota para ' + inc.name + ' (' + MONTHS[mi] + '):', current);
+      if(text === null) return;
+      if(text.trim()==='') delete inc.notes[mi]; else inc.notes[mi] = text.trim();
+      render(); scheduleSave();
+    });
+  });
+
+  document.querySelectorAll('[data-cat-name]').forEach(inp=>{
+    inp.addEventListener('blur', ()=>{
+      const cat = model.categories.find(c=>c.id===inp.getAttribute('data-cat-name'));
+      cat.name = inp.value.trim() || cat.name;
+      render(); scheduleSave();
+    });
+  });
+
+  document.querySelectorAll('[data-sub-name]').forEach(inp=>{
+    inp.addEventListener('blur', ()=>{
+      const [catId, subId] = inp.getAttribute('data-sub-name').split('|');
+      const sub = model.categories.find(c=>c.id===catId).subs.find(s=>s.id===subId);
+      sub.name = inp.value.trim() || sub.name;
+      render(); scheduleSave();
+    });
+  });
+
+  document.querySelectorAll('[data-income-name]').forEach(inp=>{
+    inp.addEventListener('blur', ()=>{
+      const inc = model.income.find(i=>i.id===inp.getAttribute('data-income-name'));
+      inc.name = inp.value.trim() || inc.name;
+      render(); scheduleSave();
+    });
+  });
+
+  document.querySelectorAll('[data-del-cat]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const catId = btn.getAttribute('data-del-cat');
+      const cat = model.categories.find(c=>c.id===catId);
+      if(!confirm(`Remover a categoria "${cat.name}" e todos os seus itens?`)) return;
+      model.categories = model.categories.filter(c=>c.id!==catId);
+      render(); scheduleSave();
+    });
+  });
+
+  document.querySelectorAll('[data-del-sub]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const [catId, subId] = btn.getAttribute('data-del-sub').split('|');
+      const cat = model.categories.find(c=>c.id===catId);
+      cat.subs = cat.subs.filter(s=>s.id!==subId);
+      render(); scheduleSave();
+    });
+  });
+
+  document.querySelectorAll('[data-del-income]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const incId = btn.getAttribute('data-del-income');
+      model.income = model.income.filter(i=>i.id!==incId);
+      render(); scheduleSave();
+    });
+  });
+
+  const addCatBtn = document.getElementById('addCatBtn');
+  if(addCatBtn) addCatBtn.addEventListener('click', ()=>{
+    model.categories.push({ id: uid('c'), name:'Nova categoria', subs:[{ id: uid('s'), name:'Novo item', vals:new Array(12).fill(0), notes:{} }] });
+    render(); scheduleSave();
+  });
+
+  const addIncomeBtn = document.getElementById('addIncomeBtn');
+  if(addIncomeBtn) addIncomeBtn.addEventListener('click', ()=>{
+    model.income.push({ id: uid('i'), name:'Nova receita', vals:new Array(12).fill(0), notes:{} });
+    render(); scheduleSave();
+  });
+}
+
+function maybeApplyPending(){
+  if(pendingRemoteModel && !document.activeElement.closest('#app')){
+    // left the table entirely with a pending update waiting; leave banner visible for manual apply
+  }
+}
+
+function updateComputed(){
+  const t = computeTotals();
+  const cols = visibleMonths();
+
+  model.categories.forEach((cat, ci)=>{
+    const sub = t.catSubtotals[ci];
+    cat.subs.forEach(s=>{
+      const cell = document.querySelector(`[data-sub-total="${cat.id}|${s.id}"]`);
+      if(cell) cell.textContent = fmt(sum(s.vals));
+    });
+    const row = document.querySelector(`[data-cat-subtotal="${cat.id}"]`);
+    if(row){
+      const cells = row.querySelectorAll('td');
+      cols.forEach((mi, idx)=>{ cells[idx+1].textContent = fmt(sub.monthly[mi]); });
+      cells[cols.length+1].textContent = fmt(sub.total);
+    }
+  });
+
+  const totalRow = document.querySelector('[data-total-despesas]');
+  if(totalRow){
+    const cells = totalRow.querySelectorAll('td');
+    cols.forEach((mi, idx)=>{ cells[idx+1].textContent = fmt(t.totalDespesasMonthly[mi]); });
+    cells[cols.length+1].textContent = fmt(t.totalDespesasTotal);
+  }
+
+  model.income.forEach(inc=>{
+    const cell = document.querySelector(`[data-income-total="${inc.id}"]`);
+    if(cell) cell.textContent = fmt(sum(inc.vals));
+  });
+
+  const incRow = document.querySelector('[data-total-receitas]');
+  if(incRow){
+    const cells = incRow.querySelectorAll('td');
+    cols.forEach((mi, idx)=>{ cells[idx+1].textContent = fmt(t.incomeMonthly[mi]); });
+    cells[cols.length+1].textContent = fmt(t.incomeTotal);
+  }
+
+  const saldoRow = document.querySelector('[data-saldo-row]');
+  if(saldoRow){
+    const cells = saldoRow.querySelectorAll('td');
+    cols.forEach((mi, idx)=>{
+      const c = cells[idx+1];
+      c.textContent = fmt(t.saldoMonthly[mi]);
+      c.className = t.saldoMonthly[mi]>=0 ? 'pos':'neg';
+    });
+    const lastIdx = cols.length+1;
+    cells[lastIdx].textContent = fmt(t.saldoTotal);
+    cells[lastIdx].className = 'total-col ' + (t.saldoTotal>=0 ? 'pos':'neg');
+  }
+}
+
+document.getElementById('yearInput').addEventListener('change', e=>{
+  model.year = parseInt(e.target.value) || model.year;
+  scheduleSave();
+});
+
+document.getElementById('viewSegment').addEventListener('click', e=>{
+  const btn = e.target.closest('button[data-view]');
+  if(!btn) return;
+  viewMode = btn.getAttribute('data-view');
+  render();
+});
+
+document.getElementById('prevMonth').addEventListener('click', ()=>{ selectedMonth = (selectedMonth + 11) % 12; render(); });
+document.getElementById('nextMonth').addEventListener('click', ()=>{ selectedMonth = (selectedMonth + 1) % 12; render(); });
+
+/* ---------- boot ---------- */
+
+const existingCfg = loadFirebaseConfig();
+if(existingCfg){
+  model = JSON.parse(JSON.stringify(DEFAULT_MODEL));
+  document.getElementById('mainView').style.display = 'block';
+  document.getElementById('yearInput').value = model.year;
+  render();
+  model = null;
+  startSync(existingCfg);
+}else{
+  renderConfigGate();
+}
+
+if('serviceWorker' in navigator){
+  window.addEventListener('load', ()=>{
+    navigator.serviceWorker.register('service-worker.js').catch(()=>{});
+  });
+}
+</script>
+</body>
+</html>
