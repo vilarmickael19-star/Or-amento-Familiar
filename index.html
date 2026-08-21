@@ -36,7 +36,7 @@
     min-height:100vh;
     padding: 28px 16px 90px;
   }
-  .wrap{ max-width: 1100px; margin: 0 auto; }
+  .wrap{ max-width: 1300px; margin: 0 auto; }
 
   header{ text-align:center; margin-bottom: 20px; }
   header .kicker{
@@ -118,7 +118,7 @@
   }
   .table-scroll{ overflow-x:auto; }
   table{ border-collapse: collapse; width: 100%; }
-  table.annual{ min-width: 980px; }
+  table.annual{ min-width: 0; width: 100%; table-layout: fixed; }
   table.monthly{ min-width: 420px; }
   th, td{
     padding: 6px 8px;
@@ -126,7 +126,10 @@
     border-bottom: 1px solid var(--rule);
     text-align: right;
     white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
+  table.annual th, table.annual td{ padding: 4px 3px; font-size: 11px; }
   thead th{
     background: var(--head-bg);
     color: var(--ink-soft);
@@ -147,6 +150,10 @@
     min-width: 210px;
     max-width: 210px;
   }
+  table.annual th.name-col, table.annual td.name-col{
+    min-width: 0; max-width: none; width: 150px;
+  }
+  table.annual th.total-col, table.annual td.total-col{ width: 68px; }
   thead th.name-col{ z-index: 3; background: var(--head-bg); }
   td.total-col, th.total-col{ font-weight:700; border-left: 1px solid var(--rule); }
 
@@ -168,6 +175,7 @@
   }
   tr.cat-header .cat-name-input:focus{ outline:1px solid var(--green); border-radius:2px; }
   tr.cat-header .row-actions{ display:flex; align-items:center; gap:4px; }
+  table.annual .cat-name-input{ width: 100px; font-size: 11px; }
 
   tr.sub-row td.name-col{ padding-left: 22px; }
   .sub-name-input{
@@ -175,19 +183,24 @@
     width: 155px; padding: 2px; font-family: inherit;
   }
   .sub-name-input:focus{ outline:1px solid var(--green); border-radius:2px; }
+  table.annual .sub-name-input{ width: 100%; font-size: 11px; padding: 2px 0; }
+  table.annual tr.sub-row td.name-col{ padding-left: 12px; }
 
   tr.subtotal-row td{
     font-weight:700; font-style: italic; color: var(--ink-soft);
     border-top: 1px solid var(--rule); font-size: 12px;
   }
   tr.subtotal-row td.name-col{ padding-left: 22px; }
+  table.annual tr.subtotal-row td.name-col{ padding-left: 12px; }
 
   tr.total-row td{
     font-weight:700; font-size: 13.5px; color: var(--ink);
     background: #EFE9D8; border-top: 2px solid var(--margin);
   }
+  table.annual tr.total-row td{ font-size: 11.5px; }
   tr.saldo-row td{ font-weight:700; font-size: 14px; border-top: 2px solid var(--ink); }
   tr.saldo-row td.name-col{ font-family: Georgia, serif; }
+  table.annual tr.saldo-row td{ font-size: 12px; }
 
   .cell-wrap{ position:relative; }
   .cell-input{
@@ -198,6 +211,9 @@
   .cell-input:hover{ border-color: var(--rule); }
   .cell-input:focus{ outline:none; border-color: var(--green); background: var(--paper); }
   .cell-input::placeholder{ color: var(--ink-soft); opacity: 0.55; }
+  table.annual .cell-input{
+    width: 100%; min-width: 0; font-size: 10.5px; padding: 2px 1px; box-sizing: border-box;
+  }
 
   .note-dot{
     position:absolute; top: 1px; right: 1px; width: 7px; height: 7px;
