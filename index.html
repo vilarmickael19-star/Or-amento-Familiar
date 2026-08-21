@@ -51,11 +51,15 @@
     display:flex; align-items:center; justify-content:center; gap:8px;
     font-size: 14px; color: var(--ink-soft);
   }
-  .year-row input{
-    width: 64px; text-align:center; font-family: ui-monospace, monospace;
-    font-size: 14px; padding: 4px 6px; border: 1px solid var(--rule);
-    border-radius: 3px; background: var(--card); color: var(--ink);
+  .year-row select{
+    font-family: ui-monospace, monospace; font-size: 14px; padding: 4px 8px;
+    border: 1px solid var(--rule); border-radius: 3px; background: var(--card); color: var(--ink);
   }
+  .year-row button{
+    background: none; border: 1px dashed var(--rule); color: var(--green-dark);
+    padding: 4px 10px; border-radius: 3px; font-size: 12.5px; font-weight:700; cursor:pointer;
+  }
+  .year-row button:hover{ background: var(--green-bg); border-color: var(--green); }
 
   .status-row{
     display:flex; align-items:center; justify-content:center; gap:6px;
@@ -221,6 +225,17 @@
   .loading{ text-align:center; padding: 60px 0; color: var(--ink-soft); font-size:14px; }
   .save-hint{ text-align:center; font-size: 11px; color: var(--ink-soft); margin-top: -4px; margin-bottom: 4px; }
 
+  .chart-card{
+    background: var(--card); border: 1px solid var(--rule); border-radius: 4px;
+    padding: 18px 20px 12px; margin-bottom: 18px;
+  }
+  .chart-card h3{
+    font-family: Georgia, serif; font-size: 15px; margin: 0 0 14px; color: var(--ink);
+    font-weight:700;
+  }
+  .chart-box{ position:relative; height: 260px; }
+  .chart-box.donut-box{ height: 300px; max-width: 420px; margin: 0 auto; }
+
   .config-gate{
     max-width: 480px; margin: 60px auto; background: var(--card);
     border: 1px solid var(--rule); border-radius: 6px; padding: 28px 26px;
@@ -247,7 +262,9 @@
     <div class="kicker">Orçamento familiar</div>
     <h1>As Nossas Despesas</h1>
     <div class="year-row">
-      Ano <input type="number" id="yearInput" />
+      Ano
+      <select id="yearSelect"></select>
+      <button id="newYearBtn" title="Criar novo ano">+ Novo ano</button>
     </div>
     <div class="status-row">
       <span class="status-dot" id="statusDot"></span>
@@ -268,6 +285,7 @@
       <div class="segmented" id="viewSegment">
         <button data-view="monthly">Mês</button>
         <button data-view="annual">Ano completo</button>
+        <button data-view="charts">Gráficos</button>
       </div>
       <div class="month-nav" id="monthNav" style="display:none;">
         <button id="prevMonth" aria-label="Mês anterior">‹</button>
@@ -277,9 +295,29 @@
     </div>
 
     <div id="app"><div class="loading">A carregar os teus dados…</div></div>
+
+    <div id="chartsView" style="display:none;">
+      <div class="chart-card">
+        <h3>Receitas vs Despesas por mês</h3>
+        <div class="chart-box"><canvas id="chartIncomeExpense"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <h3>Saldo mensal</h3>
+        <div class="chart-box"><canvas id="chartSaldo"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <h3>Saldo acumulado ao longo do ano</h3>
+        <div class="chart-box"><canvas id="chartCumulative"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <h3>Despesas por categoria (ano)</h3>
+        <div class="chart-box donut-box"><canvas id="chartCategoryPie"></canvas></div>
+      </div>
+    </div>
   </div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <script>
 const LOCAL_CACHE_KEY = 'budget-cache-v1';
 const FIREBASE_CONFIG_KEY = 'firebase-config-v1';
@@ -332,9 +370,12 @@ let selectedMonth = new Date().getMonth();
 let db = null;
 let docRef = null;
 let unsubscribeSnapshot = null;
+let metaUnsubscribe = null;
 let saveTimer = null;
 let lastSyncedJson = null;
 let pendingRemoteModel = null;
+let selectedYear = null;
+let availableYears = [];
 
 function uid(prefix){ return prefix + '_' + Date.now() + '_' + Math.random().toString(36).slice(2,7); }
 function fmt(n){
@@ -441,7 +482,16 @@ document.getElementById('reconfigBtn').addEventListener('click', ()=>{
   renderConfigGate();
 });
 
-/* ---------- Firestore sync ---------- */
+/* ---------- Firestore sync (year-aware) ---------- */
+
+function docRefForYear(y){ return db.collection('orcamento').doc(String(y)); }
+function cacheKeyForYear(y){ return LOCAL_CACHE_KEY + ':' + y; }
+
+function renderYearSelect(){
+  const sel = document.getElementById('yearSelect');
+  const years = availableYears.slice().sort((a,b)=>a-b);
+  sel.innerHTML = years.map(y=>`<option value="${y}" ${y===selectedYear?'selected':''}>${y}</option>`).join('');
+}
 
 function startSync(cfg){
   try{
@@ -450,69 +500,163 @@ function startSync(cfg){
     }
     db = firebase.firestore();
     try{ db.enablePersistence({ synchronizeTabs:true }).catch(()=>{}); }catch(e){}
-    docRef = db.collection('orcamento').doc('familia');
 
     setStatus('', 'A ligar…');
     document.getElementById('mainView').style.display = 'block';
 
-    const cached = localStorage.getItem(LOCAL_CACHE_KEY);
-    if(cached){
-      try{ model = JSON.parse(cached); document.getElementById('yearInput').value = model.year; render(); }catch(e){}
-    }
+    const metaRef = db.collection('orcamento').doc('_anos');
+    const legacyRef = db.collection('orcamento').doc('familia');
 
-    unsubscribeSnapshot = docRef.onSnapshot(snap=>{
-      if(!snap.exists){
-        if(!model){
-          model = JSON.parse(JSON.stringify(DEFAULT_MODEL));
-          document.getElementById('yearInput').value = model.year;
-          render();
+    legacyRef.get().then(legacySnap=>{
+      metaRef.get().then(metaSnap=>{
+        let years = (metaSnap.exists && metaSnap.data().years) ? metaSnap.data().years.slice() : [];
+
+        const afterMigration = ()=>{
+          if(years.length === 0){
+            // truly first run ever for this project
+            years = [DEFAULT_MODEL.year];
+            metaRef.set({ years }).catch(()=>{});
+          }
+          availableYears = years;
+          const cachedYear = parseInt(localStorage.getItem('selected-year-v1'), 10);
+          selectedYear = (cachedYear && years.includes(cachedYear)) ? cachedYear : Math.max(...years);
+          renderYearSelect();
+          subscribeMeta(metaRef);
+          switchToYear(selectedYear);
+        };
+
+        if(legacySnap.exists && legacySnap.data().model){
+          const legacyModel = legacySnap.data().model;
+          const legacyYear = legacyModel.year || DEFAULT_MODEL.year;
+          if(!years.includes(legacyYear)){
+            docRefForYear(legacyYear).set({ model: legacyModel }).then(()=>{
+              years.push(legacyYear);
+              metaRef.set({ years }).then(afterMigration).catch(afterMigration);
+            }).catch(afterMigration);
+          }else{
+            afterMigration();
+          }
+        }else{
+          afterMigration();
         }
-        lastSyncedJson = JSON.stringify(model);
-        docRef.set({ model }).catch(()=>{});
-        return;
-      }
-      const data = snap.data();
-      if(!data || !data.model) return;
-      const incomingJson = JSON.stringify(data.model);
-      if(incomingJson === lastSyncedJson) return;
-
-      if(model === null){
-        model = data.model;
-        lastSyncedJson = incomingJson;
-        document.getElementById('yearInput').value = model.year;
-        localStorage.setItem(LOCAL_CACHE_KEY, incomingJson);
-        render();
-        return;
-      }
-
-      if(incomingJson === JSON.stringify(model)) { lastSyncedJson = incomingJson; return; }
-
-      const active = document.activeElement;
-      const isEditing = active && active.closest && active.closest('#app');
-      if(isEditing){
-        pendingRemoteModel = data.model;
-        document.getElementById('updateBanner').style.display = 'flex';
-      }else{
-        model = data.model;
-        lastSyncedJson = incomingJson;
-        localStorage.setItem(LOCAL_CACHE_KEY, incomingJson);
-        document.getElementById('yearInput').value = model.year;
-        render();
-      }
-    }, err=>{
-      console.error(err);
-      setStatus('offline', 'Sem ligação — a mostrar dados guardados');
-    });
-
-    window.addEventListener('online', ()=> setStatus('online', 'Sincronizado'));
-    window.addEventListener('offline', ()=> setStatus('offline', 'Sem ligação — a mostrar dados guardados'));
-    setTimeout(()=>{ if(navigator.onLine) setStatus('online', 'Sincronizado'); }, 1200);
+      }).catch(()=> renderConfigGate('Não consegui ler a base de dados. Confirma as regras do Firestore.'));
+    }).catch(()=> renderConfigGate('Não consegui ler a base de dados. Confirma as regras do Firestore.'));
 
   }catch(e){
     console.error(e);
     renderConfigGate('Não consegui ligar com esta configuração. Confirma os valores e tenta novamente.');
   }
 }
+
+function subscribeMeta(metaRef){
+  if(metaUnsubscribe) metaUnsubscribe();
+  metaUnsubscribe = metaRef.onSnapshot(snap=>{
+    if(!snap.exists || !snap.data().years) return;
+    availableYears = snap.data().years.slice();
+    renderYearSelect();
+  });
+}
+
+function switchToYear(y){
+  if(unsubscribeSnapshot) unsubscribeSnapshot();
+  selectedYear = y;
+  localStorage.setItem('selected-year-v1', String(y));
+  model = null;
+  lastSyncedJson = null;
+  pendingRemoteModel = null;
+  document.getElementById('updateBanner').style.display = 'none';
+  document.getElementById('app').innerHTML = '<div class="loading">A carregar os teus dados…</div>';
+  docRef = docRefForYear(y);
+  renderYearSelect();
+
+  const cached = localStorage.getItem(cacheKeyForYear(y));
+  if(cached){
+    try{ model = JSON.parse(cached); render(); }catch(e){}
+  }
+
+  unsubscribeSnapshot = docRef.onSnapshot(snap=>{
+    if(!snap.exists){
+      if(!model){
+        model = JSON.parse(JSON.stringify(DEFAULT_MODEL));
+        model.year = y;
+        render();
+      }
+      lastSyncedJson = JSON.stringify(model);
+      docRef.set({ model }).catch(()=>{});
+      return;
+    }
+    const data = snap.data();
+    if(!data || !data.model) return;
+    const incomingJson = JSON.stringify(data.model);
+    if(incomingJson === lastSyncedJson) return;
+
+    if(model === null){
+      model = data.model;
+      lastSyncedJson = incomingJson;
+      localStorage.setItem(cacheKeyForYear(y), incomingJson);
+      render();
+      return;
+    }
+
+    if(incomingJson === JSON.stringify(model)) { lastSyncedJson = incomingJson; return; }
+
+    const active = document.activeElement;
+    const isEditing = active && active.closest && active.closest('#app');
+    if(isEditing){
+      pendingRemoteModel = data.model;
+      document.getElementById('updateBanner').style.display = 'flex';
+    }else{
+      model = data.model;
+      lastSyncedJson = incomingJson;
+      localStorage.setItem(cacheKeyForYear(y), incomingJson);
+      render();
+    }
+  }, err=>{
+    console.error(err);
+    setStatus('offline', 'Sem ligação — a mostrar dados guardados');
+  });
+
+  window.addEventListener('online', ()=> setStatus('online', 'Sincronizado'));
+  window.addEventListener('offline', ()=> setStatus('offline', 'Sem ligação — a mostrar dados guardados'));
+  setTimeout(()=>{ if(navigator.onLine) setStatus('online', 'Sincronizado'); }, 1200);
+}
+
+function createNewYear(){
+  if(!model){ alert('Aguarda o carregamento dos dados antes de criares um novo ano.'); return; }
+  const suggestion = Math.max(selectedYear, ...availableYears) + 1;
+  const input = prompt('Ano a criar:', String(suggestion));
+  if(input === null) return;
+  const newYear = parseInt(input, 10);
+  if(!newYear || newYear < 2000 || newYear > 2100){ alert('Indica um ano válido.'); return; }
+  if(availableYears.includes(newYear)){ alert('Esse ano já existe — escolhe-o no seletor.'); return; }
+
+  const newModel = {
+    year: newYear,
+    categories: model.categories.map(cat=>({
+      id: uid('c'),
+      name: cat.name,
+      subs: cat.subs.map(sub=>({ id: uid('s'), name: sub.name, vals: new Array(12).fill(0), notes: {} }))
+    })),
+    income: model.income.map(inc=>({ id: uid('i'), name: inc.name, vals: new Array(12).fill(0), notes: {} }))
+  };
+
+  docRefForYear(newYear).set({ model: newModel }).then(()=>{
+    const metaRef = db.collection('orcamento').doc('_anos');
+    const years = Array.from(new Set([...availableYears, newYear]));
+    metaRef.set({ years }).then(()=>{
+      availableYears = years;
+      switchToYear(newYear);
+    });
+  }).catch(()=>{
+    alert('Não consegui criar o novo ano. Verifica a ligação e tenta novamente.');
+  });
+}
+
+document.getElementById('newYearBtn').addEventListener('click', createNewYear);
+document.getElementById('yearSelect').addEventListener('change', e=>{
+  const y = parseInt(e.target.value, 10);
+  if(y && y !== selectedYear) switchToYear(y);
+});
 
 function scheduleSave(){
   localStorage.setItem(LOCAL_CACHE_KEY, JSON.stringify(model));
@@ -531,10 +675,9 @@ document.getElementById('applyUpdateBtn').addEventListener('click', ()=>{
   if(pendingRemoteModel){
     model = pendingRemoteModel;
     lastSyncedJson = JSON.stringify(model);
-    localStorage.setItem(LOCAL_CACHE_KEY, lastSyncedJson);
+    localStorage.setItem(cacheKeyForYear(selectedYear), lastSyncedJson);
     pendingRemoteModel = null;
     document.getElementById('updateBanner').style.display = 'none';
-    document.getElementById('yearInput').value = model.year;
     render();
   }
 });
@@ -565,18 +708,128 @@ function noteDot(note, dataAttr){
   return `<button type="button" class="note-dot ${has?'has-note':''}" title="${title}" ${dataAttr}></button>`;
 }
 
+/* ---------- charts ---------- */
+
+const CHART_PALETTE = ['#2F6B4C','#378ADD','#C68B3E','#D4537E','#A6432F','#7F77DD','#888780','#5B9B7A','#B0793E','#6E8FC9'];
+let chartInstances = {};
+
+function destroyCharts(){
+  Object.values(chartInstances).forEach(c=>{ if(c) c.destroy(); });
+  chartInstances = {};
+}
+
+function renderCharts(t){
+  if(typeof Chart === 'undefined') return;
+  destroyCharts();
+
+  const commonFont = { family: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif", size: 11 };
+  const tickColor = getComputedStyle(document.body).getPropertyValue('--ink-soft').trim() || '#5B6459';
+  const gridColor = 'rgba(217,208,184,0.5)';
+
+  chartInstances.ie = new Chart(document.getElementById('chartIncomeExpense').getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels: MONTHS,
+      datasets: [
+        { label:'Receitas', data: t.incomeMonthly, backgroundColor:'#2F6B4C', borderRadius:3, maxBarThickness: 26 },
+        { label:'Despesas', data: t.totalDespesasMonthly, backgroundColor:'#A6432F', borderRadius:3, maxBarThickness: 26 }
+      ]
+    },
+    options: {
+      responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{ position:'bottom', labels:{ color: tickColor, font: commonFont } } },
+      scales:{
+        x:{ ticks:{ color: tickColor, font: commonFont }, grid:{ display:false } },
+        y:{ beginAtZero:true, ticks:{ color: tickColor, font: commonFont }, grid:{ color: gridColor } }
+      }
+    }
+  });
+
+  chartInstances.saldo = new Chart(document.getElementById('chartSaldo').getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels: MONTHS,
+      datasets: [{ label:'Saldo', data: t.saldoMonthly, backgroundColor: t.saldoMonthly.map(v=> v>=0 ? '#2F6B4C' : '#A6432F'), borderRadius:3, maxBarThickness: 30 }]
+    },
+    options: {
+      responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{ display:false } },
+      scales:{
+        x:{ ticks:{ color: tickColor, font: commonFont }, grid:{ display:false } },
+        y:{ ticks:{ color: tickColor, font: commonFont }, grid:{ color: gridColor } }
+      }
+    }
+  });
+
+  const cumulative = [];
+  t.saldoMonthly.reduce((acc, v, i)=>{ cumulative[i] = acc + v; return cumulative[i]; }, 0);
+
+  chartInstances.cumulative = new Chart(document.getElementById('chartCumulative').getContext('2d'), {
+    type: 'line',
+    data: {
+      labels: MONTHS,
+      datasets: [{
+        label:'Saldo acumulado', data: cumulative, borderColor:'#2F6B4C', backgroundColor:'rgba(47,107,76,0.12)',
+        fill:true, tension:0.25, pointRadius:3, pointBackgroundColor:'#2F6B4C'
+      }]
+    },
+    options: {
+      responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{ display:false } },
+      scales:{
+        x:{ ticks:{ color: tickColor, font: commonFont }, grid:{ display:false } },
+        y:{ ticks:{ color: tickColor, font: commonFont }, grid:{ color: gridColor } }
+      }
+    }
+  });
+
+  const catTotals = model.categories
+    .map(cat=> ({ name: cat.name, total: sum(cat.subs.map(s=>sum(s.vals))) }))
+    .filter(c=> c.total > 0)
+    .sort((a,b)=> b.total - a.total);
+
+  const pieCanvas = document.getElementById('chartCategoryPie');
+  if(catTotals.length === 0){
+    chartInstances.pie = null;
+    const ctx = pieCanvas.getContext('2d');
+    ctx.clearRect(0,0,pieCanvas.width, pieCanvas.height);
+  }else{
+    chartInstances.pie = new Chart(pieCanvas.getContext('2d'), {
+      type: 'doughnut',
+      data: {
+        labels: catTotals.map(c=>c.name),
+        datasets: [{ data: catTotals.map(c=>c.total), backgroundColor: CHART_PALETTE.slice(0, catTotals.length), borderColor: '#FDFBF5', borderWidth: 2 }]
+      },
+      options: {
+        responsive:true, maintainAspectRatio:false,
+        plugins:{ legend:{ position:'bottom', labels:{ color: tickColor, font: commonFont, boxWidth: 12 } } }
+      }
+    });
+  }
+}
+
 /* ---------- render ---------- */
 
 function render(){
   if(!model) return;
   const app = document.getElementById('app');
   const t = computeTotals();
-  const cols = visibleMonths();
-  const colspan = cols.length + 2;
 
   document.querySelectorAll('#viewSegment button').forEach(b=> b.classList.toggle('active', b.getAttribute('data-view')===viewMode));
   document.getElementById('monthNav').style.display = viewMode==='monthly' ? 'flex' : 'none';
   document.getElementById('monthLabel').textContent = MONTHS_FULL[selectedMonth];
+
+  if(viewMode === 'charts'){
+    app.style.display = 'none';
+    document.getElementById('chartsView').style.display = 'block';
+    renderCharts(t);
+    return;
+  }
+  app.style.display = 'block';
+  document.getElementById('chartsView').style.display = 'none';
+
+  const cols = visibleMonths();
+  const colspan = cols.length + 2;
 
   let html = `<div class="table-card"><div class="table-scroll"><table class="${viewMode==='annual'?'annual':'monthly'}">
     <thead><tr>
@@ -844,11 +1097,6 @@ function updateComputed(){
   }
 }
 
-document.getElementById('yearInput').addEventListener('change', e=>{
-  model.year = parseInt(e.target.value) || model.year;
-  scheduleSave();
-});
-
 document.getElementById('viewSegment').addEventListener('click', e=>{
   const btn = e.target.closest('button[data-view]');
   if(!btn) return;
@@ -863,11 +1111,7 @@ document.getElementById('nextMonth').addEventListener('click', ()=>{ selectedMon
 
 const existingCfg = loadFirebaseConfig();
 if(existingCfg){
-  model = JSON.parse(JSON.stringify(DEFAULT_MODEL));
   document.getElementById('mainView').style.display = 'block';
-  document.getElementById('yearInput').value = model.year;
-  render();
-  model = null;
   startSync(existingCfg);
 }else{
   renderConfigGate();
