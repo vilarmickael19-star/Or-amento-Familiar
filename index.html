@@ -119,7 +119,7 @@
   .table-card.compact-card{ width: fit-content; max-width: 100%; margin-left: auto; margin-right: auto; }
   .table-scroll{ overflow-x:auto; }
   table{ border-collapse: collapse; width: 100%; }
-  table.annual{ min-width: 0; width: 100%; table-layout: fixed; }
+  table.annual{ min-width: 760px; width: 100%; table-layout: fixed; }
   table.monthly{ width: auto; min-width: 420px; max-width: 520px; }
   th, td{
     padding: 3px 8px;
@@ -155,6 +155,7 @@
     min-width: 0; max-width: none; width: 150px;
   }
   table.annual th.total-col, table.annual td.total-col{ width: 68px; }
+  table.annual th:not(.name-col):not(.total-col), table.annual td:not(.name-col):not(.total-col){ width: 42px; }
   table.monthly th:not(.name-col):not(.total-col), table.monthly td:not(.name-col):not(.total-col){ width: 110px; }
   table.monthly th.total-col, table.monthly td.total-col{ width: 110px; }
   thead th.name-col{ z-index: 3; background: var(--head-bg); }
