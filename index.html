@@ -462,9 +462,13 @@ function startSync(cfg){
 
     unsubscribeSnapshot = docRef.onSnapshot(snap=>{
       if(!snap.exists){
-        if(model){
-          docRef.set({ model }).catch(()=>{});
+        if(!model){
+          model = JSON.parse(JSON.stringify(DEFAULT_MODEL));
+          document.getElementById('yearInput').value = model.year;
+          render();
         }
+        lastSyncedJson = JSON.stringify(model);
+        docRef.set({ model }).catch(()=>{});
         return;
       }
       const data = snap.data();
