@@ -116,12 +116,13 @@
     overflow: hidden;
     margin-bottom: 18px;
   }
+  .table-card.compact-card{ max-width: 560px; margin-left: auto; margin-right: auto; }
   .table-scroll{ overflow-x:auto; }
   table{ border-collapse: collapse; width: 100%; }
   table.annual{ min-width: 0; width: 100%; table-layout: fixed; }
-  table.monthly{ min-width: 420px; }
+  table.monthly{ width: auto; min-width: 420px; max-width: 520px; }
   th, td{
-    padding: 6px 8px;
+    padding: 3px 8px;
     font-size: 12.5px;
     border-bottom: 1px solid var(--rule);
     text-align: right;
@@ -154,6 +155,8 @@
     min-width: 0; max-width: none; width: 150px;
   }
   table.annual th.total-col, table.annual td.total-col{ width: 68px; }
+  table.monthly th:not(.name-col):not(.total-col), table.monthly td:not(.name-col):not(.total-col){ width: 110px; }
+  table.monthly th.total-col, table.monthly td.total-col{ width: 110px; }
   thead th.name-col{ z-index: 3; background: var(--head-bg); }
   td.total-col, th.total-col{ font-weight:700; border-left: 1px solid var(--rule); }
 
@@ -206,7 +209,7 @@
   .cell-input{
     width: 68px; text-align:right; border: 1px solid transparent; background: transparent;
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px;
-    color: var(--ink); padding: 3px 4px; border-radius: 3px;
+    color: var(--ink); padding: 2px 4px; border-radius: 3px;
   }
   .cell-input:hover{ border-color: var(--rule); }
   .cell-input:focus{ outline:none; border-color: var(--green); background: var(--paper); }
@@ -847,7 +850,7 @@ function render(){
   const cols = visibleMonths();
   const colspan = cols.length + 2;
 
-  let html = `<div class="table-card"><div class="table-scroll"><table class="${viewMode==='annual'?'annual':'monthly'}">
+  let html = `<div class="table-card ${viewMode==='monthly' ? 'compact-card' : ''}"><div class="table-scroll"><table class="${viewMode==='annual'?'annual':'monthly'}">
     <thead><tr>
       <th class="name-col">Item</th>
       ${cols.map(mi=>`<th>${MONTHS[mi]}</th>`).join('')}
